@@ -117,7 +117,7 @@ Servicio al Cliente`
     let activeCategory = 'all';
     let searchQuery = '';
     let currentView = 'agent';
-    let activeImageTarget = 'agent'; // 'agent' | 'support'
+    let activeImageTarget = 'agent';
     let currentSelectedImgSrc = '';
 
     // Grammar State
@@ -279,16 +279,18 @@ Servicio al Cliente`
             const hasAlert = t.alertInfographic || t.alertExternalCc || t.alertNotice;
             const hasImages = t.body.includes('<img') || t.body.includes('data:image');
             
+            const cleanSnippet = t.body.replace(/<img[^>]*>/gi, '[🖼️ Imagen Incrustada]');
+
             card.innerHTML = `
                 <div class="template-card-header">
                     <span class="template-card-title">${escapeHtml(t.name)}</span>
                     <span class="template-card-badge">${escapeHtml(t.category)}</span>
                 </div>
-                <div class="template-card-snippet">${escapeHtml(t.body.replace(/<img[^>]*>/gi, '[Imagen]'))}</div>
+                <div class="template-card-snippet">${escapeHtml(cleanSnippet)}</div>
                 ${hasAlert ? `<div class="template-card-has-alert">⚠️ Contiene Avisos Especiales</div>` : ''}
                 <div class="template-card-footer">
                     <span>${vars.length} variable(s) manuales</span>
-                    ${hasImages ? '<span>🖼️ Con Imágenes</span>' : ''}
+                    ${hasImages ? '<span style="color:var(--primary); font-weight:600;">🖼️ Con Imagen</span>' : ''}
                 </div>
             `;
 
@@ -377,7 +379,7 @@ Servicio al Cliente`
         elements.variablesContainer.innerHTML = '';
 
         if (vars.length === 0) {
-            elements.variablesContainer.innerHTML = `<div class="empty-state"><p>Esta plantilla se gestiona 100% mediante los selectores gramaticales e imágenes de la plantilla.</p></div>`;
+            elements.variablesContainer.innerHTML = `<div class="empty-state"><p>Esta plantilla se gestiona 100% mediante los selectores gramaticales superiores.</p></div>`;
             return;
         }
 
@@ -480,7 +482,72 @@ Servicio al Cliente`
         return result;
     }
 
-    // Live Preview Arial 10pt Renderer (Supports Inline HTML Images)
+    /**
+     * RICH BODY PARSER FOR AGENT PREVIEW (Renders actual HTML <img> elements without escaping them)
+     */
+    function renderBodyToHtml(bodyText) {
+        if (!bodyText) return '';
+
+        // 1. Extract all <img ...> tags into placeholders so escaping doesn't break them
+        const imgPlaceholders = [];
+        let processed = bodyText.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
+            const id = imgPlaceholders.length;
+            imgPlaceholders.push(`<img src="${src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);">`);
+            return `\n\n__IMG_TOKEN_${id}__\n\n`;
+        });
+
+        // Match any remaining general <img ...> tags
+        processed = processed.replace(/<img\s+[^>]+>/gi, (match) => {
+            if (match.includes('__IMG_TOKEN_')) return match;
+            const id = imgPlaceholders.length;
+            const srcMatch = match.match(/src=["']([^"']+)["']/i);
+            const src = srcMatch ? srcMatch[1] : '';
+            if (src) {
+                imgPlaceholders.push(`<img src="${src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);">`);
+                return `\n\n__IMG_TOKEN_${id}__\n\n`;
+            }
+            return match;
+        });
+
+        // 2. Split into blocks by double newlines \n\n
+        const blocks = processed.split(/\n\n+/);
+
+        const htmlBlocks = blocks.map(block => {
+            const trimmed = block.trim();
+            if (!trimmed) return '';
+
+            // Check if block is a standalone image token
+            const tokenMatch = trimmed.match(/^__IMG_TOKEN_(\d+)__$/);
+            if (tokenMatch) {
+                const index = parseInt(tokenMatch[1], 10);
+                return imgPlaceholders[index] || '';
+            }
+
+            // Convert text lines to <br> while preserving inline HTML formatting (bold, italic, etc)
+            let linesHtml = escapeHtmlExceptFormatting(trimmed).replace(/\n/g, '<br>');
+
+            // Restore any inline image tokens
+            linesHtml = linesHtml.replace(/__IMG_TOKEN_(\d+)__/g, (m, idx) => {
+                return imgPlaceholders[parseInt(idx, 10)] || '';
+            });
+
+            return `<p style="font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1e293b; margin-bottom: 12px;">${linesHtml}</p>`;
+        });
+
+        return htmlBlocks.filter(b => b !== '').join('');
+    }
+
+    function escapeHtmlExceptFormatting(str) {
+        if (!str) return '';
+        // Escape < and > except for allowed HTML formatting tags (b, i, u, strong, em, br)
+        return str
+            .replace(/&/g, "&amp;")
+            .replace(/<(?!\/?(b|i|u|strong|em|br)\b)[^>]+>/gi, match => {
+                return match.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            });
+    }
+
+    // Live Preview Arial 10pt Renderer
     function updatePreview() {
         const tpl = templates.find(t => t.id === currentTemplateId);
         if (!tpl) return;
@@ -502,31 +569,12 @@ Servicio al Cliente`
 
         bodyResult = processGrammarRules(bodyResult);
 
-        // Parse paragraphs while preserving <img> tags intact
-        const imgMap = [];
-        let cleanBody = bodyResult.replace(/<img[^>]*>/gi, (imgTag) => {
-            imgMap.push(imgTag);
-            return `___IMG_PLACEHOLDER_${imgMap.length - 1}___`;
-        });
-
-        const paragraphs = cleanBody.split(/\n\n+/);
-        let htmlBody = paragraphs.map(p => {
-            let lineBreaks = escapeHtml(p).replace(/\n/g, '<br>');
-            imgMap.forEach((imgTag, idx) => {
-                const token = `___IMG_PLACEHOLDER_${idx}___`;
-                lineBreaks = lineBreaks.replace(token, imgTag);
-            });
-            return `<p style="font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1e293b; margin-bottom: 12px;">${lineBreaks}</p>`;
-        }).join('');
-
-        imgMap.forEach((imgTag, idx) => {
-            const token = `___IMG_PLACEHOLDER_${idx}___`;
-            htmlBody = htmlBody.replace(token, imgTag);
-        });
+        // Render full HTML body with real visual images
+        const htmlContent = renderBodyToHtml(bodyResult);
 
         elements.emailPreview.innerHTML = `
             <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1e293b;">
-                ${htmlBody}
+                ${htmlContent}
             </div>
         `;
     }
@@ -591,7 +639,7 @@ Servicio al Cliente`
                     reader.onload = function (event) {
                         const base64Src = event.target.result;
                         insertImageHtmlToPreview(`<img src="${base64Src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`);
-                        showToast('Imagen del portapapeles pegada con éxito', 'success');
+                        showToast('Imagen del portapapeles pegada en la vista previa', 'success');
                     };
                     reader.readAsDataURL(blob);
                     return;
@@ -611,7 +659,7 @@ Servicio al Cliente`
                         const base64Src = event.target.result;
                         const imgTag = `<img src="${base64Src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`;
                         insertTagToSupportText(imgTag);
-                        showToast('Imagen del portapapeles pegada en la plantilla', 'success');
+                        showToast('Imagen incrustada en la plantilla de Soporte', 'success');
                     };
                     reader.readAsDataURL(blob);
                     return;
@@ -698,7 +746,7 @@ Servicio al Cliente`
             }
 
             closeImageModal();
-            showToast('Imagen insertada exitosamente', 'success');
+            showToast('Imagen incrustada exitosamente', 'success');
         });
     }
 
@@ -743,7 +791,7 @@ Servicio al Cliente`
         templates.forEach(t => {
             const card = document.createElement('div');
             card.className = `template-card ${t.id === supportSelectedId ? 'active' : ''}`;
-            const snippetText = t.body.replace(/<img[^>]*>/gi, '[Imagen]');
+            const snippetText = t.body.replace(/<img[^>]*>/gi, '[🖼️ Imagen Incrustada]');
             card.innerHTML = `
                 <div class="template-card-header">
                     <span class="template-card-title">${escapeHtml(t.name)}</span>
