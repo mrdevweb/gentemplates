@@ -1,6 +1,6 @@
 /**
  * GENESYS CLOUD EMAIL TEMPLATE EDITOR
- * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables & Universal (a) Gender Transformer
+ * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables, Universal (a) Gender Transformer & Rich Image Copy/Paste Engine
  */
 
 (function () {
@@ -98,7 +98,7 @@ Atentamente,
 
 Nos complace informarle que su requerimiento registrado con el número #{{Numero_Ticket}} ha sido resuelto exitosamente.
 
-Resumen de la solución applied:
+Resumen de la solución aplicada:
 {{Detalle_Solucion}}
 
 Agradecemos su confianza en nuestro servicio. Si tiene alguna inquietud adicional sobre esta misma gestión, puede responder a este mensaje antes de 5 días hábiles.
@@ -117,6 +117,8 @@ Servicio al Cliente`
     let activeCategory = 'all';
     let searchQuery = '';
     let currentView = 'agent';
+    let activeImageTarget = 'agent'; // 'agent' | 'support'
+    let currentSelectedImgSrc = '';
 
     // Grammar State
     let selectedGender = 'hombre';
@@ -143,12 +145,13 @@ Servicio al Cliente`
         genderSelector: document.getElementById('gender-selector'),
         pluralSelector: document.getElementById('plural-selector'),
 
-        // Agent Buttons
+        // Agent Buttons & Toolbar
         btnCopyGenesys: document.getElementById('btn-copy-genesys'),
         btnCopyText: document.getElementById('btn-copy-text'),
         btnQuickFillToday: document.getElementById('btn-quick-fill-today'),
         btnClearVariables: document.getElementById('btn-clear-variables'),
         btnThemeToggle: document.getElementById('btn-theme-toggle'),
+        agentBtnImage: document.getElementById('agent-btn-image'),
 
         // Backup Menu
         btnBackupMenu: document.getElementById('btn-backup-menu'),
@@ -169,11 +172,27 @@ Servicio al Cliente`
         suppTplExternalCc: document.getElementById('supp-tpl-external-cc'),
         suppTplNotice: document.getElementById('supp-tpl-notice'),
         suppTplBody: document.getElementById('supp-tpl-body'),
+        suppBtnImage: document.getElementById('supp-btn-image'),
 
         // Dual Variable Creator Elements (Support Mode)
         dualValSingular: document.getElementById('dual-val-singular'),
         dualValPlural: document.getElementById('dual-val-plural'),
         btnInsertDualVar: document.getElementById('btn-insert-dual-var'),
+
+        // Image Modal Elements
+        modalImageDialog: document.getElementById('modal-image-dialog'),
+        btnCloseImgModal: document.getElementById('btn-close-img-modal'),
+        btnCancelImgModal: document.getElementById('btn-cancel-img-modal'),
+        btnConfirmInsertImg: document.getElementById('btn-confirm-insert-img'),
+        tabImgFile: document.getElementById('tab-img-file'),
+        tabImgUrl: document.getElementById('tab-img-url'),
+        tabContentFile: document.getElementById('tab-content-file'),
+        tabContentUrl: document.getElementById('tab-content-url'),
+        imgDropZone: document.getElementById('img-drop-zone'),
+        modalImgInput: document.getElementById('modal-img-input'),
+        modalImgUrlInput: document.getElementById('modal-img-url-input'),
+        imgModalPreviewBox: document.getElementById('img-modal-preview-box'),
+        imgModalPreview: document.getElementById('img-modal-preview'),
 
         quickTagsContainer: document.getElementById('quick-tags-container'),
         toastContainer: document.getElementById('toast-container')
@@ -183,6 +202,8 @@ Servicio al Cliente`
         loadTemplates();
         setupEventListeners();
         setupFormattingToolbar();
+        setupClipboardPasteHandlers();
+        setupImageModalHandlers();
 
         if (templates.length > 0) {
             selectTemplate(templates[0].id);
@@ -256,16 +277,18 @@ Servicio al Cliente`
             card.className = `template-card ${t.id === currentTemplateId ? 'active' : ''}`;
             const vars = extractManualVariables(t.body);
             const hasAlert = t.alertInfographic || t.alertExternalCc || t.alertNotice;
+            const hasImages = t.body.includes('<img') || t.body.includes('data:image');
             
             card.innerHTML = `
                 <div class="template-card-header">
                     <span class="template-card-title">${escapeHtml(t.name)}</span>
                     <span class="template-card-badge">${escapeHtml(t.category)}</span>
                 </div>
-                <div class="template-card-snippet">${escapeHtml(t.body)}</div>
+                <div class="template-card-snippet">${escapeHtml(t.body.replace(/<img[^>]*>/gi, '[Imagen]'))}</div>
                 ${hasAlert ? `<div class="template-card-has-alert">⚠️ Contiene Avisos Especiales</div>` : ''}
                 <div class="template-card-footer">
                     <span>${vars.length} variable(s) manuales</span>
+                    ${hasImages ? '<span>🖼️ Con Imágenes</span>' : ''}
                 </div>
             `;
 
@@ -354,7 +377,7 @@ Servicio al Cliente`
         elements.variablesContainer.innerHTML = '';
 
         if (vars.length === 0) {
-            elements.variablesContainer.innerHTML = `<div class="empty-state"><p>Esta plantilla se gestiona 100% mediante los selectores gramaticales superiores.</p></div>`;
+            elements.variablesContainer.innerHTML = `<div class="empty-state"><p>Esta plantilla se gestiona 100% mediante los selectores gramaticales e imágenes de la plantilla.</p></div>`;
             return;
         }
 
@@ -457,7 +480,7 @@ Servicio al Cliente`
         return result;
     }
 
-    // Live Preview Arial 10pt Renderer
+    // Live Preview Arial 10pt Renderer (Supports Inline HTML Images)
     function updatePreview() {
         const tpl = templates.find(t => t.id === currentTemplateId);
         if (!tpl) return;
@@ -471,7 +494,6 @@ Servicio al Cliente`
 
         let bodyResult = tpl.body;
 
-        // Apply manual user inputs
         Object.keys(values).forEach(key => {
             const val = values[key] !== '' ? values[key] : `{{${key}}}`;
             const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
@@ -480,11 +502,27 @@ Servicio al Cliente`
 
         bodyResult = processGrammarRules(bodyResult);
 
-        const paragraphs = bodyResult.split(/\n\n+/);
-        const htmlBody = paragraphs.map(p => {
-            const lineBreaks = escapeHtml(p).replace(/\n/g, '<br>');
+        // Parse paragraphs while preserving <img> tags intact
+        const imgMap = [];
+        let cleanBody = bodyResult.replace(/<img[^>]*>/gi, (imgTag) => {
+            imgMap.push(imgTag);
+            return `___IMG_PLACEHOLDER_${imgMap.length - 1}___`;
+        });
+
+        const paragraphs = cleanBody.split(/\n\n+/);
+        let htmlBody = paragraphs.map(p => {
+            let lineBreaks = escapeHtml(p).replace(/\n/g, '<br>');
+            imgMap.forEach((imgTag, idx) => {
+                const token = `___IMG_PLACEHOLDER_${idx}___`;
+                lineBreaks = lineBreaks.replace(token, imgTag);
+            });
             return `<p style="font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1e293b; margin-bottom: 12px;">${lineBreaks}</p>`;
         }).join('');
+
+        imgMap.forEach((imgTag, idx) => {
+            const token = `___IMG_PLACEHOLDER_${idx}___`;
+            htmlBody = htmlBody.replace(token, imgTag);
+        });
 
         elements.emailPreview.innerHTML = `
             <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.45; color: #1e293b;">
@@ -493,7 +531,7 @@ Servicio al Cliente`
         `;
     }
 
-    // Hero Copy Action for Genesys Cloud
+    // Hero Copy Action for Genesys Cloud (Includes Images & Arial 10pt formatting)
     async function copyForGenesysCloud() {
         const previewElement = elements.emailPreview;
         const htmlContent = previewElement.innerHTML;
@@ -509,7 +547,7 @@ Servicio al Cliente`
             });
 
             await navigator.clipboard.write([clipboardItem]);
-            showToast('¡Cuerpo copiado en Arial 10pt! Pégalo con Ctrl + V en Genesys Cloud.', 'success');
+            showToast('¡Cuerpo e imágenes copiadas en Arial 10pt! Pégalo con Ctrl + V en Genesys Cloud.', 'success');
 
         } catch (err) {
             fallbackCopyHtml(htmlContent);
@@ -531,13 +569,165 @@ Servicio al Cliente`
 
         try {
             document.execCommand('copy');
-            showToast('¡Cuerpo copiado al portapapeles! Pégalo con Ctrl + V.', 'success');
+            showToast('¡Cuerpo e imágenes copiadas! Pégalas con Ctrl + V.', 'success');
         } catch (e) {
             showToast('Error al copiar automáticamente.', 'error');
         }
 
         selection.removeAllRanges();
         document.body.removeChild(container);
+    }
+
+    // DIRECT CLIPBOARD PASTE HANDLER FOR IMAGES (Ctrl + V)
+    function setupClipboardPasteHandlers() {
+        // Agent View Preview Paste Handler
+        elements.emailPreview.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf('image') === 0) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        const base64Src = event.target.result;
+                        insertImageHtmlToPreview(`<img src="${base64Src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`);
+                        showToast('Imagen del portapapeles pegada con éxito', 'success');
+                    };
+                    reader.readAsDataURL(blob);
+                    return;
+                }
+            }
+        });
+
+        // Support Mode Textarea Paste Handler
+        elements.suppTplBody.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.type.indexOf('image') === 0) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        const base64Src = event.target.result;
+                        const imgTag = `<img src="${base64Src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`;
+                        insertTagToSupportText(imgTag);
+                        showToast('Imagen del portapapeles pegada en la plantilla', 'success');
+                    };
+                    reader.readAsDataURL(blob);
+                    return;
+                }
+            }
+        });
+    }
+
+    function insertImageHtmlToPreview(imgTag) {
+        elements.emailPreview.focus();
+        document.execCommand('insertHTML', false, imgTag);
+    }
+
+    // IMAGE MODAL HANDLERS
+    function setupImageModalHandlers() {
+        elements.agentBtnImage.addEventListener('click', () => openImageModal('agent'));
+        elements.suppBtnImage.addEventListener('click', () => openImageModal('support'));
+
+        elements.btnCloseImgModal.addEventListener('click', closeImageModal);
+        elements.btnCancelImgModal.addEventListener('click', closeImageModal);
+
+        elements.tabImgFile.addEventListener('click', () => {
+            elements.tabImgFile.classList.add('active');
+            elements.tabImgUrl.classList.remove('active');
+            elements.tabContentFile.classList.add('active');
+            elements.tabContentUrl.classList.remove('active');
+        });
+
+        elements.tabImgUrl.addEventListener('click', () => {
+            elements.tabImgUrl.classList.add('active');
+            elements.tabImgFile.classList.remove('active');
+            elements.tabContentUrl.classList.add('active');
+            elements.tabContentFile.classList.remove('active');
+        });
+
+        elements.imgDropZone.addEventListener('click', () => elements.modalImgInput.click());
+
+        elements.imgDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            elements.imgDropZone.style.borderColor = 'var(--primary)';
+        });
+
+        elements.imgDropZone.addEventListener('dragleave', () => {
+            elements.imgDropZone.style.borderColor = 'var(--border-highlight)';
+        });
+
+        elements.imgDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            elements.imgDropZone.style.borderColor = 'var(--border-highlight)';
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileSelection(e.dataTransfer.files[0]);
+            }
+        });
+
+        elements.modalImgInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        elements.modalImgUrlInput.addEventListener('input', (e) => {
+            const url = e.target.value.trim();
+            if (url) {
+                currentSelectedImgSrc = url;
+                elements.imgModalPreview.src = url;
+                elements.imgModalPreviewBox.classList.remove('hidden');
+            } else {
+                elements.imgModalPreviewBox.classList.add('hidden');
+            }
+        });
+
+        elements.btnConfirmInsertImg.addEventListener('click', () => {
+            if (!currentSelectedImgSrc) {
+                showToast('Selecciona o ingresa una imagen primero', 'error');
+                return;
+            }
+
+            const imgTag = `<img src="${currentSelectedImgSrc}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`;
+
+            if (activeImageTarget === 'support') {
+                insertTagToSupportText(imgTag);
+            } else {
+                insertImageHtmlToPreview(imgTag);
+            }
+
+            closeImageModal();
+            showToast('Imagen insertada exitosamente', 'success');
+        });
+    }
+
+    function handleFileSelection(file) {
+        if (!file.type.startsWith('image/')) {
+            showToast('Por favor selecciona un archivo de imagen válido', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            currentSelectedImgSrc = e.target.result;
+            elements.imgModalPreview.src = currentSelectedImgSrc;
+            elements.imgModalPreviewBox.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function openImageModal(target) {
+        activeImageTarget = target;
+        currentSelectedImgSrc = '';
+        elements.modalImgInput.value = '';
+        elements.modalImgUrlInput.value = '';
+        elements.imgModalPreviewBox.classList.add('hidden');
+        elements.modalImageDialog.classList.add('active');
+    }
+
+    function closeImageModal() {
+        elements.modalImageDialog.classList.remove('active');
     }
 
     // SUPPORT / ADMIN WORKSPACE
@@ -553,12 +743,13 @@ Servicio al Cliente`
         templates.forEach(t => {
             const card = document.createElement('div');
             card.className = `template-card ${t.id === supportSelectedId ? 'active' : ''}`;
+            const snippetText = t.body.replace(/<img[^>]*>/gi, '[Imagen]');
             card.innerHTML = `
                 <div class="template-card-header">
                     <span class="template-card-title">${escapeHtml(t.name)}</span>
                     <span class="template-card-badge">${escapeHtml(t.category)}</span>
                 </div>
-                <div class="template-card-snippet">${escapeHtml(t.body)}</div>
+                <div class="template-card-snippet">${escapeHtml(snippetText)}</div>
             `;
             card.addEventListener('click', () => selectSupportTemplate(t.id));
             listContainer.appendChild(card);
@@ -618,7 +809,7 @@ Servicio al Cliente`
             alertInfographic: elements.suppTplInfographic.value.trim(),
             alertExternalCc: elements.suppTplExternalCc.value.trim(),
             alertNotice: elements.suppTplNotice.value.trim(),
-            body: elements.suppTplBody.value.trim()
+            body: elements.suppTplBody.value
         };
 
         saveTemplates();
@@ -653,7 +844,6 @@ Servicio al Cliente`
         document.getElementById('supp-tag-cliente').addEventListener('click', () => insertTagToSupportText('{{Nombre_Cliente}}'));
         document.getElementById('supp-tag-ticket').addEventListener('click', () => insertTagToSupportText('{{Numero_Ticket}}'));
         document.getElementById('supp-tag-saludo').addEventListener('click', () => insertTagToSupportText('Estimado(a)'));
-        document.getElementById('supp-tag-informado').addEventListener('click', () => insertTagToSupportText('informado(a)'));
     }
 
     function applyFormat(command, value = null) {

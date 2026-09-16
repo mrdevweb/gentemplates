@@ -698,7 +698,7 @@ body {
     background: var(--bg-base);
 }
 
-/* STRICT ARIAL 10PT EMAIL CANVAS */
+/* STRICT ARIAL 10PT EMAIL CANVAS WITH INLINE IMAGES */
 .arial-10-editor {
     font-family: Arial, Helvetica, sans-serif !important;
     font-size: 10pt !important;
@@ -717,6 +717,15 @@ body {
     margin-bottom: 0.85rem !important;
     font-family: Arial, Helvetica, sans-serif !important;
     font-size: 10pt !important;
+}
+
+.arial-10-editor img {
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    margin: 12px 0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12) !important;
 }
 
 .arial-10-editor ul, .arial-10-editor ol {
@@ -891,7 +900,157 @@ kbd {
     border-radius: var(--radius-sm);
 }
 
-/* Standard Buttons & Base Modals */
+/* IMAGE MODAL & DROP ZONE STYLES */
+.modal-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1rem;
+}
+
+.modal-tab-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: var(--transition);
+}
+
+.modal-tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.modal-tab-content {
+    display: none;
+}
+
+.modal-tab-content.active {
+    display: block;
+}
+
+.drop-zone {
+    border: 2px dashed var(--border-highlight);
+    border-radius: var(--radius-md);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    background: var(--bg-input);
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.drop-zone:hover {
+    background: var(--bg-card);
+    border-color: var(--primary);
+}
+
+.img-preview-box {
+    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    background: var(--bg-input);
+    text-align: center;
+}
+
+.img-preview-box.hidden {
+    display: none;
+}
+
+.img-preview-box img {
+    max-width: 100%;
+    max-height: 220px;
+    border-radius: var(--radius-sm);
+    margin-top: 0.5rem;
+}
+
+/* Modals */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: var(--transition);
+    z-index: 100;
+}
+
+.modal-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    width: 90%;
+    max-width: 550px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(20px);
+    transition: var(--transition);
+}
+
+.modal-backdrop.active .modal-card {
+    transform: translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding-top: 1rem;
+}
+
+/* Standard Buttons */
 .btn {
     display: inline-flex;
     align-items: center;
