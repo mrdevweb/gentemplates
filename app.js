@@ -1,6 +1,6 @@
 /**
  * GENESYS CLOUD EMAIL TEMPLATE EDITOR
- * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables, Universal (a) Gender Transformer, Rich Image Engine & Word (.docx) Parser
+ * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables, Universal (a) Gender Transformer & Rich Image Engine
  */
 
 (function () {
@@ -113,11 +113,8 @@ Servicio al Cliente`
     // State
     let templates = [];
     let currentTemplateId = null;
-    let supportSelectedId = null;
     let activeCategory = 'all';
     let searchQuery = '';
-    let currentView = 'agent';
-    let activeImageTarget = 'agent';
     let currentSelectedImgSrc = '';
 
     // Grammar State
@@ -126,10 +123,7 @@ Servicio al Cliente`
 
     // DOM Elements
     const elements = {
-        btnModeAgent: document.getElementById('btn-mode-agent'),
-        btnModeSupport: document.getElementById('btn-mode-support'),
         viewAgentContainer: document.getElementById('view-agent-container'),
-        viewSupportContainer: document.getElementById('view-support-container'),
 
         // Agent View
         templatesContainer: document.getElementById('templates-container'),
@@ -160,27 +154,6 @@ Servicio al Cliente`
         importJsonFile: document.getElementById('import-json-file'),
         btnResetDefaults: document.getElementById('btn-reset-defaults'),
 
-        // Support View & Word Import
-        supportTemplatesList: document.getElementById('support-templates-list'),
-        btnSupportNewTpl: document.getElementById('btn-support-new-tpl'),
-        btnSupportSaveTpl: document.getElementById('btn-support-save-tpl'),
-        btnSupportDeleteTpl: document.getElementById('btn-support-delete-tpl'),
-        btnImportWord: document.getElementById('btn-import-word'),
-        suppDocxFileInput: document.getElementById('supp-docx-file-input'),
-        suppTplId: document.getElementById('supp-tpl-id'),
-        suppTplName: document.getElementById('supp-tpl-name'),
-        suppTplCategory: document.getElementById('supp-tpl-category'),
-        suppTplInfographic: document.getElementById('supp-tpl-infographic'),
-        suppTplExternalCc: document.getElementById('supp-tpl-external-cc'),
-        suppTplNotice: document.getElementById('supp-tpl-notice'),
-        suppTplBody: document.getElementById('supp-tpl-body'),
-        suppBtnImage: document.getElementById('supp-btn-image'),
-
-        // Dual Variable Creator Elements (Support Mode)
-        dualValSingular: document.getElementById('dual-val-singular'),
-        dualValPlural: document.getElementById('dual-val-plural'),
-        btnInsertDualVar: document.getElementById('btn-insert-dual-var'),
-
         // Image Modal Elements
         modalImageDialog: document.getElementById('modal-image-dialog'),
         btnCloseImgModal: document.getElementById('btn-close-img-modal'),
@@ -206,7 +179,6 @@ Servicio al Cliente`
         setupFormattingToolbar();
         setupClipboardPasteHandlers();
         setupImageModalHandlers();
-        setupWordImportHandlers();
 
         if (templates.length > 0) {
             selectTemplate(templates[0].id);
@@ -239,24 +211,6 @@ Servicio al Cliente`
 
     function saveTemplates() {
         localStorage.setItem('genesys_email_templates', JSON.stringify(templates));
-    }
-
-    function switchView(mode) {
-        currentView = mode;
-        if (mode === 'agent') {
-            elements.btnModeAgent.classList.add('active');
-            elements.btnModeSupport.classList.remove('active');
-            elements.viewAgentContainer.classList.add('active');
-            elements.viewSupportContainer.classList.remove('active');
-            renderAgentTemplatesList();
-            if (currentTemplateId) selectTemplate(currentTemplateId);
-        } else {
-            elements.btnModeSupport.classList.add('active');
-            elements.btnModeAgent.classList.remove('active');
-            elements.viewSupportContainer.classList.add('active');
-            elements.viewAgentContainer.classList.remove('active');
-            renderSupportWorkspace();
-        }
     }
 
     function renderAgentTemplatesList() {
@@ -491,7 +445,6 @@ Servicio al Cliente`
     function renderBodyToHtml(bodyText) {
         if (!bodyText) return '';
 
-        // 1. Extract all <img ...> tags into placeholders so escaping doesn't break them
         const imgPlaceholders = [];
         let processed = bodyText.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
             const id = imgPlaceholders.length;
@@ -499,7 +452,6 @@ Servicio al Cliente`
             return `\n\n__IMG_TOKEN_${id}__\n\n`;
         });
 
-        // Match any remaining general <img ...> tags
         processed = processed.replace(/<img\s+[^>]+>/gi, (match) => {
             if (match.includes('__IMG_TOKEN_')) return match;
             const id = imgPlaceholders.length;
@@ -512,24 +464,20 @@ Servicio al Cliente`
             return match;
         });
 
-        // 2. Split into blocks by double newlines \n\n
         const blocks = processed.split(/\n\n+/);
 
         const htmlBlocks = blocks.map(block => {
             const trimmed = block.trim();
             if (!trimmed) return '';
 
-            // Check if block is a standalone image token
             const tokenMatch = trimmed.match(/^__IMG_TOKEN_(\d+)__$/);
             if (tokenMatch) {
                 const index = parseInt(tokenMatch[1], 10);
                 return imgPlaceholders[index] || '';
             }
 
-            // Convert text lines to <br> while preserving inline HTML formatting (bold, italic, etc)
             let linesHtml = escapeHtmlExceptFormatting(trimmed).replace(/\n/g, '<br>');
 
-            // Restore any inline image tokens
             linesHtml = linesHtml.replace(/__IMG_TOKEN_(\d+)__/g, (m, idx) => {
                 return imgPlaceholders[parseInt(idx, 10)] || '';
             });
@@ -580,7 +528,7 @@ Servicio al Cliente`
         `;
     }
 
-    // Hero Copy Action for Genesys Cloud (Includes Images & Arial 10pt formatting)
+    // Hero Copy Action for Genesys Cloud
     async function copyForGenesysCloud() {
         const previewElement = elements.emailPreview;
         const htmlContent = previewElement.innerHTML;
@@ -627,84 +575,8 @@ Servicio al Cliente`
         document.body.removeChild(container);
     }
 
-    // WORD DOCUMENT (.DOCX) IMPORT HANDLERS (Powered by Mammoth.js offline)
-    function setupWordImportHandlers() {
-        elements.btnImportWord.addEventListener('click', () => {
-            elements.suppDocxFileInput.click();
-        });
-
-        elements.suppDocxFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            if (!file.name.toLowerCase().endsWith('.docx')) {
-                showToast('Por favor selecciona un archivo de Microsoft Word (.docx)', 'error');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = function (event) {
-                const arrayBuffer = event.target.result;
-                
-                if (typeof mammoth === 'undefined') {
-                    showToast('Librería de conversión Word no cargada.', 'error');
-                    return;
-                }
-
-                // Options for Mammoth: Convert images to inline Base64 data URLs
-                const options = {
-                    convertImage: mammoth.images.imgElement(function (image) {
-                        return image.read("base64").then(function (imageBuffer) {
-                            return {
-                                src: "data:" + image.contentType + ";base64," + imageBuffer
-                            };
-                        });
-                    })
-                };
-
-                mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options)
-                    .then(function (result) {
-                        let convertedHtml = result.value;
-                        
-                        // Clean template title from Word filename
-                        const rawTitle = file.name.replace(/\.docx$/i, '').replace(/[_-]/g, ' ');
-                        const formattedTitle = rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1);
-
-                        // Create new template from imported Word document
-                        const newId = 'tpl_word_' + Date.now();
-                        const newTpl = {
-                            id: newId,
-                            name: formattedTitle,
-                            category: 'Personalizadas',
-                            alertInfographic: '',
-                            alertExternalCc: '',
-                            alertNotice: '',
-                            body: convertedHtml
-                        };
-
-                        templates.unshift(newTpl);
-                        saveTemplates();
-
-                        supportSelectedId = newId;
-                        renderSupportWorkspace();
-                        selectSupportTemplate(newId);
-
-                        showToast(`¡Plantilla Word "${formattedTitle}" importada exitosamente!`, 'success');
-                    })
-                    .catch(function (err) {
-                        console.error(err);
-                        showToast('Error al procesar el archivo Word. Asegúrate de que sea un archivo .docx válido.', 'error');
-                    });
-            };
-
-            reader.readAsArrayBuffer(file);
-            elements.suppDocxFileInput.value = '';
-        });
-    }
-
     // DIRECT CLIPBOARD PASTE HANDLER FOR IMAGES (Ctrl + V)
     function setupClipboardPasteHandlers() {
-        // Agent View Preview Paste Handler
         elements.emailPreview.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let item of items) {
@@ -722,26 +594,6 @@ Servicio al Cliente`
                 }
             }
         });
-
-        // Support Mode Textarea Paste Handler
-        elements.suppTplBody.addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let item of items) {
-                if (item.type.indexOf('image') === 0) {
-                    e.preventDefault();
-                    const blob = item.getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = function (event) {
-                        const base64Src = event.target.result;
-                        const imgTag = `<img src="${base64Src}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`;
-                        insertTagToSupportText(imgTag);
-                        showToast('Imagen incrustada en la plantilla de Soporte', 'success');
-                    };
-                    reader.readAsDataURL(blob);
-                    return;
-                }
-            }
-        });
     }
 
     function insertImageHtmlToPreview(imgTag) {
@@ -751,8 +603,7 @@ Servicio al Cliente`
 
     // IMAGE MODAL HANDLERS
     function setupImageModalHandlers() {
-        elements.agentBtnImage.addEventListener('click', () => openImageModal('agent'));
-        elements.suppBtnImage.addEventListener('click', () => openImageModal('support'));
+        elements.agentBtnImage.addEventListener('click', () => openImageModal());
 
         elements.btnCloseImgModal.addEventListener('click', closeImageModal);
         elements.btnCancelImgModal.addEventListener('click', closeImageModal);
@@ -815,12 +666,7 @@ Servicio al Cliente`
 
             const imgTag = `<img src="${currentSelectedImgSrc}" alt="Imagen incrustada" style="max-width: 100%; height: auto; display: block; margin: 12px 0; border-radius: 6px;">`;
 
-            if (activeImageTarget === 'support') {
-                insertTagToSupportText(imgTag);
-            } else {
-                insertImageHtmlToPreview(imgTag);
-            }
-
+            insertImageHtmlToPreview(imgTag);
             closeImageModal();
             showToast('Imagen incrustada exitosamente', 'success');
         });
@@ -841,8 +687,7 @@ Servicio al Cliente`
         reader.readAsDataURL(file);
     }
 
-    function openImageModal(target) {
-        activeImageTarget = target;
+    function openImageModal() {
         currentSelectedImgSrc = '';
         elements.modalImgInput.value = '';
         elements.modalImgUrlInput.value = '';
@@ -854,106 +699,6 @@ Servicio al Cliente`
         elements.modalImageDialog.classList.remove('active');
     }
 
-    // SUPPORT / ADMIN WORKSPACE
-    function renderSupportWorkspace() {
-        const listContainer = elements.supportTemplatesList;
-        listContainer.innerHTML = '';
-
-        if (templates.length === 0) {
-            listContainer.innerHTML = `<div class="empty-state"><p>No hay plantillas registradas.</p></div>`;
-            return;
-        }
-
-        templates.forEach(t => {
-            const card = document.createElement('div');
-            card.className = `template-card ${t.id === supportSelectedId ? 'active' : ''}`;
-            const snippetText = t.body.replace(/<img[^>]*>/gi, '[🖼️ Imagen Incrustada]');
-            card.innerHTML = `
-                <div class="template-card-header">
-                    <span class="template-card-title">${escapeHtml(t.name)}</span>
-                    <span class="template-card-badge">${escapeHtml(t.category)}</span>
-                </div>
-                <div class="template-card-snippet">${escapeHtml(snippetText)}</div>
-            `;
-            card.addEventListener('click', () => selectSupportTemplate(t.id));
-            listContainer.appendChild(card);
-        });
-
-        if (!supportSelectedId && templates.length > 0) {
-            selectSupportTemplate(templates[0].id);
-        }
-    }
-
-    function selectSupportTemplate(id) {
-        supportSelectedId = id;
-        const tpl = templates.find(t => t.id === id);
-        if (!tpl) return;
-
-        renderSupportWorkspace();
-
-        elements.suppTplId.value = tpl.id;
-        elements.suppTplName.value = tpl.name;
-        elements.suppTplCategory.value = tpl.category;
-        elements.suppTplInfographic.value = tpl.alertInfographic || '';
-        elements.suppTplExternalCc.value = tpl.alertExternalCc || '';
-        elements.suppTplNotice.value = tpl.alertNotice || '';
-        elements.suppTplBody.value = tpl.body;
-    }
-
-    function createNewSupportTemplate() {
-        const newId = 'tpl_' + Date.now();
-        const newTpl = {
-            id: newId,
-            name: 'Nueva Plantilla Personalizada',
-            category: 'Servicio',
-            alertInfographic: '',
-            alertExternalCc: '',
-            alertNotice: '',
-            body: 'Estimado(a) {{Nombre_Cliente}},\n\nPor medio del presente correo le mantenemos informado(a) respecto a {{solicitud_solicitudes}}...\n\nAtentamente,\nCentro de Atención'
-        };
-
-        templates.unshift(newTpl);
-        saveTemplates();
-        supportSelectedId = newId;
-        renderSupportWorkspace();
-        showToast('Nueva plantilla creada en modo Soporte', 'success');
-    }
-
-    function saveSupportTemplate() {
-        const id = elements.suppTplId.value;
-        if (!id) return;
-
-        const index = templates.findIndex(t => t.id === id);
-        if (index === -1) return;
-
-        templates[index] = {
-            id,
-            name: elements.suppTplName.value.trim() || 'Sin Nombre',
-            category: elements.suppTplCategory.value,
-            alertInfographic: elements.suppTplInfographic.value.trim(),
-            alertExternalCc: elements.suppTplExternalCc.value.trim(),
-            alertNotice: elements.suppTplNotice.value.trim(),
-            body: elements.suppTplBody.value
-        };
-
-        saveTemplates();
-        renderSupportWorkspace();
-        showToast('Cambios de la plantilla guardados exitosamente', 'success');
-    }
-
-    function deleteSupportTemplate() {
-        const id = elements.suppTplId.value;
-        if (!id) return;
-
-        if (confirm('¿Eliminar esta plantilla definitivamente?')) {
-            templates = templates.filter(t => t.id !== id);
-            saveTemplates();
-            supportSelectedId = templates.length > 0 ? templates[0].id : null;
-            renderSupportWorkspace();
-            showToast('Plantilla eliminada', 'success');
-        }
-    }
-
     function setupFormattingToolbar() {
         document.getElementById('format-bold').addEventListener('click', () => applyFormat('bold'));
         document.getElementById('format-italic').addEventListener('click', () => applyFormat('italic'));
@@ -961,13 +706,6 @@ Servicio al Cliente`
         document.getElementById('format-ul').addEventListener('click', () => applyFormat('insertUnorderedList'));
         document.getElementById('format-ol').addEventListener('click', () => applyFormat('insertOrderedList'));
         document.getElementById('format-clear').addEventListener('click', () => applyFormat('removeFormat'));
-
-        document.getElementById('supp-bold').addEventListener('click', () => insertTextTag('<b>', '</b>'));
-        document.getElementById('supp-italic').addEventListener('click', () => insertTextTag('<i>', '</i>'));
-        document.getElementById('supp-underline').addEventListener('click', () => insertTextTag('<u>', '</u>'));
-        document.getElementById('supp-tag-cliente').addEventListener('click', () => insertTagToSupportText('{{Nombre_Cliente}}'));
-        document.getElementById('supp-tag-ticket').addEventListener('click', () => insertTagToSupportText('{{Numero_Ticket}}'));
-        document.getElementById('supp-tag-saludo').addEventListener('click', () => insertTagToSupportText('Estimado(a)'));
     }
 
     function applyFormat(command, value = null) {
@@ -975,27 +713,7 @@ Servicio al Cliente`
         document.execCommand(command, false, value);
     }
 
-    function insertTextTag(open, close) {
-        const textarea = elements.suppTplBody;
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const selected = textarea.value.substring(start, end);
-        textarea.value = textarea.value.substring(0, start) + open + selected + close + textarea.value.substring(end);
-    }
-
-    function insertTagToSupportText(tag) {
-        const textarea = elements.suppTplBody;
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        textarea.value = textarea.value.substring(0, start) + tag + textarea.value.substring(end);
-        textarea.selectionStart = textarea.selectionEnd = start + tag.length;
-        textarea.focus();
-    }
-
     function setupEventListeners() {
-        elements.btnModeAgent.addEventListener('click', () => switchView('agent'));
-        elements.btnModeSupport.addEventListener('click', () => switchView('support'));
-
         // Grammar Gender Selector
         elements.genderSelector.addEventListener('click', (e) => {
             const btn = e.target.closest('.grammar-pill');
@@ -1044,29 +762,6 @@ Servicio al Cliente`
             });
         });
 
-        // Insert Custom Dual Variable {{Singular_Plural}}
-        elements.btnInsertDualVar.addEventListener('click', () => {
-            const singular = elements.dualValSingular.value.trim();
-            const plural = elements.dualValPlural.value.trim();
-            if (!singular || !plural) {
-                showToast('Ingresa ambos valores (Singular y Plural)', 'error');
-                return;
-            }
-            insertTagToSupportText(`{{${singular}_${plural}}}`);
-            elements.dualValSingular.value = '';
-            elements.dualValPlural.value = '';
-            showToast(`Variable {{${singular}_${plural}}} insertada`, 'success');
-        });
-
-        // Quick Preset Dual Variables
-        document.querySelectorAll('.dual-preset-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const singular = btn.getAttribute('data-singular');
-                const plural = btn.getAttribute('data-plural');
-                insertTagToSupportText(`{{${singular}_${plural}}}`);
-            });
-        });
-
         // Agent Actions
         elements.btnCopyGenesys.addEventListener('click', copyForGenesysCloud);
         elements.btnCopyText.addEventListener('click', () => {
@@ -1099,11 +794,6 @@ Servicio al Cliente`
                 renderAgentTemplatesList();
             }
         });
-
-        // Support Actions
-        elements.btnSupportNewTpl.addEventListener('click', createNewSupportTemplate);
-        elements.btnSupportSaveTpl.addEventListener('click', saveSupportTemplate);
-        elements.btnSupportDeleteTpl.addEventListener('click', deleteSupportTemplate);
 
         elements.btnThemeToggle.addEventListener('click', () => {
             const currentTheme = document.documentElement.getAttribute('data-theme');
