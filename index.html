@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Plantillas de Correo Genesys Cloud - Arial 10pt</title>
-    <meta name="description" content="Editor de cuerpo de correo estandarizado en Arial 10pt con soporte para imágenes, avisos y gramática dinámica.">
+    <meta name="description" content="Editor de cuerpo de correo estandarizado en Arial 10pt con soporte para imágenes, avisos, gramática dinámica e importación de Microsoft Word.">
     <link rel="stylesheet" href="styles.css">
+    <script src="mammoth.browser.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -20,7 +21,7 @@
                 </div>
                 <div class="brand-title">
                     <h1>Genesys Email Templates</h1>
-                    <span class="brand-subtitle">Solo Cuerpo • Arial 10pt • Copiado de Imágenes & Gramática</span>
+                    <span class="brand-subtitle">Solo Cuerpo • Arial 10pt • Importación Word • Imágenes & Gramática</span>
                 </div>
             </div>
 
@@ -243,6 +244,18 @@
                         <h3>Biblioteca de Plantillas</h3>
                         <button id="btn-support-new-tpl" class="btn btn-primary btn-sm">+ Nueva Plantilla</button>
                     </div>
+
+                    <!-- WORD DOCUMENT (.DOCX) IMPORT CARD -->
+                    <div class="word-import-card">
+                        <div class="word-import-header">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            <span>Importar Plantilla Word (.docx)</span>
+                        </div>
+                        <p class="word-import-desc">Extrae texto, párrafos, formato e imágenes automáticamente de un documento de Word.</p>
+                        <button id="btn-import-word" class="btn btn-secondary btn-sm w-full">📄 Subir Archivo Word (.docx)</button>
+                        <input type="file" id="supp-docx-file-input" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;">
+                    </div>
+
                     <div class="support-templates-list" id="support-templates-list"></div>
                 </aside>
 
@@ -342,7 +355,7 @@
                                 <button type="button" class="editor-btn" id="supp-tag-ticket">+ {{Numero_Ticket}}</button>
                                 <button type="button" class="editor-btn" id="supp-tag-saludo">+ Estimado(a)</button>
                             </div>
-                            <textarea id="supp-tpl-body" rows="14" required placeholder="Escribe el cuerpo de la plantilla aquí... Puedes pegar imágenes directamente con Ctrl+V o usar el botón 🖼️ Insertar Imagen."></textarea>
+                            <textarea id="supp-tpl-body" rows="14" required placeholder="Escribe el cuerpo de la plantilla aquí... Puedes importar un archivo Word (.docx), pegar imágenes con Ctrl+V o usar el botón 🖼️ Insertar Imagen."></textarea>
                             <span class="form-help">💡 Tip de Imágenes: Puedes pegar cualquier captura de pantalla o imagen copiada directamente con <kbd>Ctrl</kbd> + <kbd>V</kbd>.</span>
                         </div>
                     </div>

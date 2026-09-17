@@ -1,6 +1,6 @@
 /**
  * GENESYS CLOUD EMAIL TEMPLATE EDITOR
- * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables, Universal (a) Gender Transformer & Rich Image Copy/Paste Engine
+ * Engine: Dynamic Body Parser, Strict Arial 10pt Rich HTML Generator, Dual Grammar Variables, Universal (a) Gender Transformer, Rich Image Engine & Word (.docx) Parser
  */
 
 (function () {
@@ -160,11 +160,13 @@ Servicio al Cliente`
         importJsonFile: document.getElementById('import-json-file'),
         btnResetDefaults: document.getElementById('btn-reset-defaults'),
 
-        // Support View
+        // Support View & Word Import
         supportTemplatesList: document.getElementById('support-templates-list'),
         btnSupportNewTpl: document.getElementById('btn-support-new-tpl'),
         btnSupportSaveTpl: document.getElementById('btn-support-save-tpl'),
         btnSupportDeleteTpl: document.getElementById('btn-support-delete-tpl'),
+        btnImportWord: document.getElementById('btn-import-word'),
+        suppDocxFileInput: document.getElementById('supp-docx-file-input'),
         suppTplId: document.getElementById('supp-tpl-id'),
         suppTplName: document.getElementById('supp-tpl-name'),
         suppTplCategory: document.getElementById('supp-tpl-category'),
@@ -204,6 +206,7 @@ Servicio al Cliente`
         setupFormattingToolbar();
         setupClipboardPasteHandlers();
         setupImageModalHandlers();
+        setupWordImportHandlers();
 
         if (templates.length > 0) {
             selectTemplate(templates[0].id);
@@ -539,10 +542,9 @@ Servicio al Cliente`
 
     function escapeHtmlExceptFormatting(str) {
         if (!str) return '';
-        // Escape < and > except for allowed HTML formatting tags (b, i, u, strong, em, br)
         return str
             .replace(/&/g, "&amp;")
-            .replace(/<(?!\/?(b|i|u|strong|em|br)\b)[^>]+>/gi, match => {
+            .replace(/<(?!\/?(b|i|u|strong|em|br|p|div|span|ul|ol|li)\b)[^>]+>/gi, match => {
                 return match.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             });
     }
@@ -569,7 +571,6 @@ Servicio al Cliente`
 
         bodyResult = processGrammarRules(bodyResult);
 
-        // Render full HTML body with real visual images
         const htmlContent = renderBodyToHtml(bodyResult);
 
         elements.emailPreview.innerHTML = `
@@ -624,6 +625,81 @@ Servicio al Cliente`
 
         selection.removeAllRanges();
         document.body.removeChild(container);
+    }
+
+    // WORD DOCUMENT (.DOCX) IMPORT HANDLERS (Powered by Mammoth.js offline)
+    function setupWordImportHandlers() {
+        elements.btnImportWord.addEventListener('click', () => {
+            elements.suppDocxFileInput.click();
+        });
+
+        elements.suppDocxFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.docx')) {
+                showToast('Por favor selecciona un archivo de Microsoft Word (.docx)', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const arrayBuffer = event.target.result;
+                
+                if (typeof mammoth === 'undefined') {
+                    showToast('Librería de conversión Word no cargada.', 'error');
+                    return;
+                }
+
+                // Options for Mammoth: Convert images to inline Base64 data URLs
+                const options = {
+                    convertImage: mammoth.images.imgElement(function (image) {
+                        return image.read("base64").then(function (imageBuffer) {
+                            return {
+                                src: "data:" + image.contentType + ";base64," + imageBuffer
+                            };
+                        });
+                    })
+                };
+
+                mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options)
+                    .then(function (result) {
+                        let convertedHtml = result.value;
+                        
+                        // Clean template title from Word filename
+                        const rawTitle = file.name.replace(/\.docx$/i, '').replace(/[_-]/g, ' ');
+                        const formattedTitle = rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1);
+
+                        // Create new template from imported Word document
+                        const newId = 'tpl_word_' + Date.now();
+                        const newTpl = {
+                            id: newId,
+                            name: formattedTitle,
+                            category: 'Personalizadas',
+                            alertInfographic: '',
+                            alertExternalCc: '',
+                            alertNotice: '',
+                            body: convertedHtml
+                        };
+
+                        templates.unshift(newTpl);
+                        saveTemplates();
+
+                        supportSelectedId = newId;
+                        renderSupportWorkspace();
+                        selectSupportTemplate(newId);
+
+                        showToast(`¡Plantilla Word "${formattedTitle}" importada exitosamente!`, 'success');
+                    })
+                    .catch(function (err) {
+                        console.error(err);
+                        showToast('Error al procesar el archivo Word. Asegúrate de que sea un archivo .docx válido.', 'error');
+                    });
+            };
+
+            reader.readAsArrayBuffer(file);
+            elements.suppDocxFileInput.value = '';
+        });
     }
 
     // DIRECT CLIPBOARD PASTE HANDLER FOR IMAGES (Ctrl + V)
